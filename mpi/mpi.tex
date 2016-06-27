@@ -1,0 +1,175 @@
+% 使用 UTF-8 编码 
+\documentclass{ctexart}
+\usepackage{listings}
+\usepackage{enumitem}
+\usepackage{courier}
+\usepackage{booktabs}
+\setCJKmainfont{SimSun}
+\setlength\parindent{0em}
+
+\lstset{basicstyle=\footnotesize\ttfamily,breaklines=true}
+
+\author{程振}
+\title{高级并行程序作业——MPI}
+
+\begin{document}
+\maketitle
+
+1. \lstinline{MPI_Wtime} 计时
+编译并且运行下面的\lstinline{MPI_Wtime}样例程序，了解使用\lstinline{MPI_Wtime}计时的方法。
+
+timer.c
+\lstset{language=C}
+\begin{lstlisting}
+  #include "mpi.h"
+  #include <stdio.h>
+  int main(int argc, char* argv[])
+  {
+      int rank, size;
+      double t_start, t_end, l_time, g_time;
+      MPI_Init(&argc,&argv);
+      MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+      MPI_Comm_size(MPI_COMM_WORLD, &size);
+      t_start = MPI_Wtime();
+      sleep(2);
+      if (rank == 1) sleep(1);
+      t_end= MPI_Wtime();
+      l_time = t_end - t_start;
+      g_time = 0;
+      MPI_Reduce(&l_time, &g_time, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+      if (!rank) 
+      printf("Local Time is %f, Global Time is %f\n", l_time, g_time);
+      MPI_Finalize();
+      return 0;
+  }
+\end{lstlisting}
+
+编译命令：\lstinline{mpicc timer.c –o timer}
+
+运行命令(TH2)：\lstinline{yhrun –n 4 -p free ./timer}
+
+运行命令(Local)：\lstinline{mpirun –n 4 -p free ./timer}
+
+运行结果(TH2)：Local Time is 2.000131, Global Time is 3.000175
+
+运行结果(Local)：Local Time is 2.003052, Global Time is 3.006091
+
+说明：所有进程执行的操作有sleep(2), 其中1号进程额外执行了sleep(1),
+最后在0号进程进行规约操作，获取的local time为0号进程的执行时间，即2s,
+global time为1号进程的时间（MAX），即3s。
+\\
+
+2. 替换timer.c中的sleep语句为一段计算程序，并为其计时。
+\\
+
+说明：使用计算$\pi$值的程序替换1号进程中的sleep语句。
+源程序见ex2.c。
+
+运行结果：Local Time is 2.001146, Global Time is 10.809598
+\\
+
+3. 编程实现。
+
+\lstinline{MPI_Bcast、MPI_Scatter、MPI_Gather、MPI_Allgather、MPI_Alltoall}是典型的以通信为主的MPI集合通讯语句。请选择以上的任意一条语句，分别采用
+\begin{enumerate}[label=(\alph*)]
+    \item \lstinline{MPI_Send、MPI_Recv}
+    \item \lstinline{MPI_Isend、MPI_Irecv}
+\end{enumerate}
+两种方法实现其功能，并且使用\lstinline{MPI_Wtime}计时并做性能分析，并且把a、b两种实现和MPI通信库中标准的集合操作语句比较。
+
+以上通讯语句的定义如下：
+
+\begin{lstlisting}
+    int MPI_Bcast(void *buffer, int count, MPI_Datatype datatype, int root, MPI_Comm comm)
+    int MPI_Gather(const void *sendbuf, int sendcount, MPI_Datatype sendtype, void *recvbuf,int recvcount, MPI_Datatype recvtype, int root, MPI_Comm comm)
+    int MPI_Gatherv(const void *sendbuf, int sendcount, MPI_Datatype sendtype, void *recvbuf, const int *recvcounts, const int *displs, MPI_Datatype recvtype, int root, MPI_Comm comm)
+    int MPI_Scatter(const void *sendbuf, int sendcount, MPI_Datatype sendtype, void *recvbuf, int recvcount, MPI_Datatype recvtype, int root, MPI_Comm comm)
+    int MPI_Allgather(const void *sendbuf, int sendcount, MPI_Datatype sendtype, void *recvbuf, int recvcount, MPI_Datatype recvtype, MPI_Comm comm)
+    int MPI_Alltoall(const void *sendbuf, int sendcount, MPI_Datatype sendtype, void *recvbuf, int recvcount, MPI_Datatype recvtype, MPI_Comm comm)
+\end{lstlisting}
+
+
+例如：\lstinline{MPI_Bcast}的可能实现如下：
+
+mybcast.c
+
+\begin{lstlisting}
+#include "mpi.h"
+#include <stdio.h>
+#include <assert.h>
+#define BUF_SZ 64
+int main(int argc, char* argv[])
+{
+    int rank, size, i;
+    double t_start, t_end, l_time, g_time;
+    int data[BUF_SZ];
+    MPI_Init(&argc,&argv);
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+    if (!rank) 
+    for (i=0; i<BUF_SZ; i++)
+        data[i] = i+1;
+
+    t_start = MPI_Wtime();
+    if (!rank) {
+    for (i=1; i<size; i++)
+        MPI_Send(data, BUF_SZ, MPI_INT, i, 123, MPI_COMM_WORLD);
+    } else 
+    MPI_Recv(data, BUF_SZ, MPI_INT, 0, 123, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    t_end= MPI_Wtime();
+
+    for (i=0; i<BUF_SZ; i++)
+    assert(data[i] == i+1);
+
+    l_time = t_end - t_start;
+    g_time = 0;
+    MPI_Reduce(&l_time, &g_time, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+    if (!rank) 
+    printf("Local Time is %f, Global Time is %f\n", l_time, g_time);
+    MPI_Finalize();
+
+    return 0;
+}
+\end{lstlisting}
+
+编译与运行:
+\begin{lstlisting}
+mpicc mybcast.c –o mybcast
+yhrun –n 32 ./mybcast
+\end{lstlisting}
+
+选择合适的实验方法，降低Wtime计时的实验误差。
+\\
+
+说明：
+选择\lstinline{MPI_Scatter}，分别使用阻塞/非阻塞发送接收方法对其
+进行实现。其中，阻塞方式函数命名为\lstinline{MPI_Scatter_cz}，
+非阻塞方式函数命名为\lstinline{MPI_Scatter_czi}，详见源程序
+ex3.c。
+
+为了评估以上两种实现与MPI通信库中的实现，对这三种实现进行性能评
+估，使用\lstinline{MPI_Wtime}计时进行性能分析，为了降低计时误差
+，在实验中执行Scatter操作N次取和，且最终结果重复三次取平均获
+得。实验结果如表\ref{labelex3}。
+\\
+
+从结果可以看出，阻塞方式实现已经接近 OpenMPI 标准库效率，非阻塞
+由于本实验没有过多的计算内容，无法发挥非阻塞方式的优势，额外的
+\lstinline{MPI_Wait}函数判断占用了较多的时间，导致性能弱于阻塞
+方式。
+
+\begin{table}[]
+    \centering
+    \caption{三种实现执行时间对比}
+    \label{labelex3}
+    \begin{tabular}{@{}lllll@{}}
+        \toprule
+        N=1000000 &          &          &          & mean \\ \midrule
+        阻塞   & 1.033502 & 1.029479 & 1.051039 &1.038     \\
+        非阻塞  & 1.438418 & 1.402808 & 1.329164 &1.390      \\
+        OpenMPI & 1.021237 & 1.020868 & 1.011095 &1.012      \\ \bottomrule
+    \end{tabular}
+\end{table}
+
+\end{document}
