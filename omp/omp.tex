@@ -1,0 +1,151 @@
+% 使用 UTF-8 编码 
+\documentclass{ctexart}
+\usepackage{listings}
+\usepackage{enumitem}
+\usepackage{courier}
+\usepackage{booktabs}
+\setCJKmainfont{SimSun}
+\setlength\parindent{0em}
+
+\lstset{basicstyle=\footnotesize\ttfamily,breaklines=true}
+
+\author{程振}
+\title{高级并行程序作业——OpenMP}
+
+\begin{document}
+\maketitle
+
+1. 编写求$\pi$的程序，并且用OpenMP并行，分析其性能。
+
+程序编译的命令为：
+
+\qquad GNU编译器：\lstinline {gcc -fopenmp pi.c -o pi}
+
+\qquad INTEL编译器：\lstinline {icc -openmp pi.c -o pi}
+
+程序运行的命令为：
+
+\qquad \lstinline {OMP_NUM_THREADS=16 yhrun -N 1 -p free ./pi}
+\\
+
+{\heiti 解答：}
+使用 Fortran 编程语言，利用 Simpson's rule 计算
+\lstset{language=C}
+\begin{equation}
+     \pi= \int_0^1 \frac{1}{1+x^2} dx
+\end{equation}
+\qquad 为了比较普通串行程序与OpenMP并行程序的性能差异，编写了对应的两个程序，分别为\lstinline{ex1.f90}与\lstinline{ex1_omp.f90}.
+性能分析主要考虑程序的执行时间，通过调用secnds()函数获得。详见源程序。
+
+\qquad 对于不同的分割区间宽度$w$，不同程序（线程）的执行时间见表 ~\ref{tab:wvstime}。由于secnds()函数的精度有限，当计算中选取的分割区间较小时（$<10^5$），程序执行时间过短，无法评估其性能，对应于表中的时间数值为0，但这一点并不妨碍后面的性能分析。
+
+\qquad 比较串行程序与单线程OpenMP并行程序的计算结果，可以发现二者数值十分接近，这是符合预期的。
+
+\qquad 比较不同线程的OpenMP并行程序，可以看到多线程可以起到明显的加速效果。对于一定规模的问题，在线程数较小时，增加一倍线程，计算时间对应减半，加速效果十分显著，随着线程的继续增多，由于问题规模保持不变，并行计算的开销比重开始增大，加速的效果开始减弱。
+\\
+
+
+
+\begin{table}[]
+    \caption{不同分割区间宽度不同程序（线程）的执行时间（单位:s）}
+\label{tab:wvstime}
+\centering
+\begin{tabular}{@{}lllll@{}}
+    \toprule
+   & $w=10^3$ & $w=10^5$ & $w=10^7$ & $w=10^9$ \\ \midrule
+串行   &0.00000000          &0.00200000          &0.17297401          & 17.08593750          \\
+单线程 &0.00000000          &0.00200000          &0.18797100          &17.04140854          \\
+4线程  &0.00000000          &0.00000000          & 0.05468750          &4.55468750        \\
+8线程  &0.00000000          &0.00000000          &0.03125000          &2.40625000          \\
+16线程 &0.00000000          &0.00000000          & 0.01562500          &1.24218750          \\
+32线程 &0.00000000          &0.00000000          &0.02343750          &0.97656250 \\
+64线程 &0.00000000          &0.00000000          &0.01562500          &0.89062500 \\ \bottomrule
+\end{tabular}
+\end{table}
+
+2. 考虑下面的循环：
+
+\begin{lstlisting}
+a[0] = 0;
+for (i=0; i<n; i++)
+	a[i+1] = a[i] + i;
+\end{lstlisting}
+
+这个循环中有循环依赖，不能直接使用OpenMP并行，请找一种方法消除循环依赖，并且并行化该循环。
+\\
+
+{\heiti 解答：}
+将数组$a[]$视为数列，由递推公式
+$$
+a[i+1] = a[i]+i, i>=0
+$$
+
+可得其通项公式：
+$$
+a[i+1] = \frac{i(i+1)}{2}, i>=0
+$$
+利用通项公式可以避免递推公式中存在的循环依赖，据此编写其OpenMP并行程序，ex2.f90.
+\\
+
+3. 解线性方程组时，经常使用高斯消元法，高斯消元法吧一个n*n的矩阵转换成一个上三角矩阵（矩阵对角线一下元素为0），基本操作为：
+\begin{enumerate}
+\item 两行相加
+\item 两行互换
+\item 一行乘以非0常数
+\end{enumerate}
+
+例如线性方程组
+
+\begin{equation}
+  \left\{
+   \begin{array}{c}
+   2x_0 - 3x_1 = 3  \\
+   4x_0 - 5x_1 + x_2 = 7  \\
+   2x_0 - x_1 + -3x_2 = 5  
+   \end{array}
+  \right.
+\end{equation}
+
+可以整理成上三角矩阵
+\begin{equation}
+  \left\{
+   \begin{array}{c}
+   2x_0 - 3x_1 = 3  \\
+   5x_1 + x_2 = 1  \\
+   -5x_2 = 5  
+   \end{array}
+  \right.
+\end{equation}
+以上三角矩阵就可以求解$x_0$, $x_1$, $x_2$.
+
+通常高斯消元法有两个版本“行优先”和“列优先”版本，假设方程组为$Ax=b$，“行优先”版本是：
+\begin{lstlisting}
+for (row=n-1; row>=0; row--) {
+	x[row] = b[row];
+	for (col= row+1; col<n; col++)
+		x[row] -= A[row][col]*x[col];
+	x[row] /= A[row][row];
+}
+\end{lstlisting}
+列优先版本如下：
+\begin{lstlisting}
+for (row=0; row<n; row++)
+    x[row] = b[row];
+for (col=n-1; col>=0; col--) {
+    x[col] /= A[col][col];
+    for (row=0; row<col; row++)
+        x[row] -= A[row][col]*x[col];
+}
+\end{lstlisting}
+
+两种方法均有两层循环，请判断并且说明原因：
+\begin{enumerate}[label=(\alph*)]
+\item “行优先”算法外层循环可否openmp并行化；
+\item “行优先”算法内层循环可否openmp并行化；
+\item “列优先”算法外层循环可否openmp并行化；
+\item “列优先”算法内层循环可否openmp并行化；
+\item 使用可行的并行化方法编写一个OpenMP并行的高斯消去法程序。注：可能用到Single语句。
+\item 用Schedule语句修改并行循环，分别假设矩阵有10000变量，20000变量，40000变量，选择各自最优的调度策略。
+\end{enumerate}
+
+\end{document}
