@@ -75,6 +75,10 @@ for (i=0; i<n; i++)
 \\
 
 {\heiti 解答：}
+如果可以使用通项公式，则参见方法1,否则方法2。
+
+{\heiti 方法1}
+
 将数组$a[]$视为数列，由递推公式
 $$
 a[i+1] = a[i]+i, i>=0
@@ -85,7 +89,15 @@ $$
 a[i+1] = \frac{i(i+1)}{2}, i>=0
 $$
 利用通项公式可以避免递推公式中存在的循环依赖，据此编写其OpenMP并行程序，ex2.f90.
+
+{\heiti 方法2}
+
+预先计算出a[9]的数值，将程序分解为两块可并行的程序块，解决循环依赖，可两个线程执行。
+如果需要更多线程执行可以采用类似的方法，预先计算出特定值，将程序分解为多个可并行执行
+的程序块。
+据此编写OpenMP并行程序，\lstinline{ex2_1.f90}
 \\
+
 
 3. 解线性方程组时，经常使用高斯消元法，高斯消元法吧一个n*n的矩阵转换成一个上三角矩阵（矩阵对角线一下元素为0），基本操作为：
 \begin{enumerate}
@@ -101,7 +113,7 @@ $$
    \begin{array}{c}
    2x_0 - 3x_1 = 3  \\
    4x_0 - 5x_1 + x_2 = 7  \\
-   2x_0 - x_1 + -3x_2 = 5  
+   2x_0 - x_1-3x_2 = 5  
    \end{array}
   \right.
 \end{equation}
@@ -111,8 +123,8 @@ $$
   \left\{
    \begin{array}{c}
    2x_0 - 3x_1 = 3  \\
-   5x_1 + x_2 = 1  \\
-   -5x_2 = 5  
+   x_1 + x_2 = 1  \\
+   -5x_2 = 0  
    \end{array}
   \right.
 \end{equation}
@@ -147,5 +159,94 @@ for (col=n-1; col>=0; col--) {
 \item 使用可行的并行化方法编写一个OpenMP并行的高斯消去法程序。注：可能用到Single语句。
 \item 用Schedule语句修改并行循环，分别假设矩阵有10000变量，20000变量，40000变量，选择各自最优的调度策略。
 \end{enumerate}
+
+{\heiti 解答：}
+对于高斯消去法，首先将线性方程组系数矩阵转化成上三角矩阵，对于上三角矩阵形式的系数矩阵$u_{nn}$，可以
+直接求得方程的根:
+$$
+x_{i} = \frac{b_i-\sum_{j=i+1}^{n} u_{ij} x_{j} }{u_{ii}}, i=n,...,1
+$$
+本题的源程序为\lstinline{ex3.c}，函数\lstinline{gaussr}和函数
+\lstinline{gaussc}分别代表行优先与列优先的算法。
+
+\begin{enumerate}[label=(\alph*)]
+\item “行优先”算法外层循环不可openmp并行化，外层循环是对每一行
+    进行回代求解，由于回代是从最后一行开始，之后的每一行都
+    需要上一行的回代结果，所以各行间即外层循环间存在数据依赖；
+\item “行优先”算法内层循环可以openmp并行化，通过数学公式可以看
+    出，内层循环主要为求和，没有循环间数据依赖；
+\item “列优先”算法外层循环不可openmp并行化，外层循环从最后一列
+    开始，对每列进行回代，循环间存在数据依赖。
+\item “列优先”算法内层循环可以openmp并行化，在获得此列之后x值的
+    前提下，内层循环对每行分别进行求和，不存在数据依赖。
+\item  选择行优先算法，使得内层循环并行，对应的OpenMP程序见
+    源程序中的
+    \lstinline{gaussc_omp}函数。
+\item 为了分析的简便性，下面OpenMP程序在实验过程中均使用4线程。
+    对于10000、20000与40000变量的线性方程组，其采用调度方式为
+    static、dynamic和guided的运行时间见以下三个表格（所有调度
+    方式参数均采用默认值）。
+
+    % Please add the following required packages to your document preamble:
+    % \usepackage{booktabs}
+        \begin{table}[]
+            \centering
+            \caption{N=10000,unit:$\mu s$}
+            \label{my-label}
+            \begin{tabular}{@{}lllll@{}}
+                \toprule
+                N=10000 &         &         &         & average  \\ \midrule
+                static  & 375344  & 372042  & 369511  & 372299   \\
+                dynamic & 4621399 & 4903032 & 4926575 & 4817002  \\
+                guided  & 157510  & 162388  & 163820  & 1612393 \\ \bottomrule
+            \end{tabular}
+        \end{table}
+
+        % Please add the following required packages to your document preamble:
+        % \usepackage{booktabs}
+        \begin{table}[]
+            \centering
+            \caption{N=20000,unit:$\mu s$}
+            \label{my-label}
+            \begin{tabular}{@{}lllll@{}}
+                \toprule
+                N=20000 &          &          &          & average  \\ \midrule
+                static  & 1277954  & 1294309  & 1288558  & 1286940  \\
+                dynamic & 18785700 & 19571417 & 19176848 & 19177988 \\
+                guided  & 455690   & 471719   & 460647   & 462685   \\ \bottomrule
+            \end{tabular}
+        \end{table}
+
+
+        % Please add the following required packages to your document preamble:
+        % \usepackage{booktabs}
+        \begin{table}[]
+            \centering
+            \caption{N=40000,unit:$\mu s$}
+            \label{my-label}
+            \begin{tabular}{@{}lllll@{}}
+                \toprule
+                N=40000 &          &          &          & average  \\ \midrule
+                static  & 5004907  & 4862696  & 5274263  & 5047289  \\
+                dynamic & 72441867 & 78517320 & 72950605 & 74636597 \\
+                guided  & 1514067  & 1478113  & 1473502  & 1488561  \\ \bottomrule
+            \end{tabular}
+        \end{table}
+
+        
+        通过表格数据可以发现，对于不同规模的变量，调度方式优劣
+        排序为guided>static>dynamic.
+        
+        以上为使用默认参数下的结果，对于size的选择也会严重影响
+        不同调度方式的效率，本例中，dynamic选择较大的size
+        (例如100)会使得其效率优于默认的static调度方式，但是依旧
+        不如guided调度方式。
+
+        当对于问题的特性有较清楚的了解时，可以据此选择合适的
+        调度方式和参数。否则，建议选用guided调度方式，在默认
+        情况下也能得到较好的性能。
+
+\end{enumerate}
+
 
 \end{document}

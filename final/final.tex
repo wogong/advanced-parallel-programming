@@ -1,0 +1,259 @@
+% 使用 UTF-8 编码 
+\documentclass{ctexart}
+\usepackage{listings}
+\usepackage{enumitem}
+\usepackage{courier}
+\usepackage{booktabs}
+\setCJKmainfont{SimSun}
+\setlength\parindent{0em}
+
+\lstset{basicstyle=\footnotesize\ttfamily,breaklines=true}
+
+\author{程振}
+\title{2016高级并行程序设计课程大作业}
+
+\begin{document}
+\maketitle
+
+1. 结合自己硕士（博士）课题研究方向，
+结合本领域的关键或热点问题，分析一个和本人课题相关的算法，
+内容需涵盖：
+
+\begin{enumerate}[label=(\alph*)]
+    \item 该算法的问题背景或应用背景；
+    \item 该算法的计算复杂度，算法复杂度分析可以采用算法设计与分析课程的标准方法，也可以采用简单说明的方法。例如，可以说算法复杂度是O（N3）；也可以说算法执行时间和输入的图像数目成正比，而不需要专门的形式化描述。
+    \item 该算法的并行化基本思想，包括数据划分、任务通信模式、负载均衡分析等。
+\end{enumerate}
+    该题目小组中每人必做。
+
+{\heiti 解答：}
+SCAN: Structural Clustering Algorithm for Networks,  基于结构的网络聚类算法。
+\begin{enumerate}[label=(\alph*)]
+    \item 该算法的问题背景或应用背景；
+
+        基于结构的网络聚类算法SCAN不仅可以发现网络中的社区，而且可以发现一些具有特殊功能的节点包括链接枢纽。SCAN算法在多个领域发挥着作用：在生物领域的新陈代谢网络分析、蛋白质相互作用网络分析，对于理解生物系统的组织和功能以及未知蛋白质功能预测具有重要的意义。另外，自“911事件”以来，世界各国试图用包括社区发现在内的的多种社会网络分析手段对恐怖主义活动进行分析，通过发现社会网络、电信网络以及互联网络中的犯罪网络，并迅速馈定犯罪分子的领导者，对其及其团伙的犯罪行为进行全方位的关联跟踪，进而有效引击犯罪网络，维护社会政治经济的稳定。社区发现再互联网上的应用则更为广泛，如在微博中利用社区发现用于精准广告投放，对电子商务中的用户进行社区发现从而帮助其建立更可靠的推荐系统。
+    \item 该算法的计算复杂度，算法复杂度分析可以采用算法设计与分析课程的标准方法，也可以采用简单说明的方法。例如，可以说算法复杂度是O（N3）；也可以说算法执行时间和输入的图像数目成正比，而不需要专门的形式化描述。
+
+        算法简介：
+        SCAN算法是由机器学习里的基于密度的聚类算法DBSCAN改进而来的一种非重叠社团发现算法，具有线性时间复杂度。其一大亮点在于能发现社团中桥节点(hub)和离群点(outlier)。
+
+        主要思想在于，在考虑两点之间的关系的时候，不仅考虑它们的直接链接，而是利用它们的邻居节点来作为聚类的标准。也就是说，节点根据它们共享邻居方式而聚类。 
+
+        算法定义了如下概念：
+
+        1. 节点相似度，即两个节点共同邻居的数目与两个节点邻居数目的几何平均数的比值（这里的邻居均包含节点自身）。
+        定义节点v和w的相似度是$\sigma(v,w)$。
+        
+        2. 节点的$\varepsilon$邻居定义为与其相似度不小于$\varepsilon$的节点所组成的集合。 
+
+        可以通过遍历计算节点间相似度，删除相似度小于$\varepsilon$的边，达到聚类的目的。
+
+        算法复杂度分析：
+
+        用图表示网络结构，设有m条边和n个节点。遍历每一个顶点，计算相邻节点
+        间的相似度，需要2m次。所以时间复杂度为O(m).
+
+
+    \item 该算法的并行化基本思想，包括数据划分、任务通信模式、负载均衡分析等。
+
+       SCAN算法需要遍历图的顶点，计算其与相邻顶点的相似度，
+        可以分别从图的不同顶点
+        出发，并行计算节点间相似度。
+\end{enumerate}
+
+2. 如下（a）、（b）两个选项，选择一项完成
+\begin{enumerate}[label=(\alph*)]
+    \item 实现题目1中的并行算法，可以是MPI并行，也可以是OpenMP并行，也可以是MPI/OpenMP混合并行。给出该算法的性能分析、Amdel定律扩展性、古斯塔夫森定律扩展性分析、加速比瓶颈原因分析（如果有的话）。
+    \item 使用NPB-3.3.1串行版本中的任意一个测试程序，把该程序使用MPI并行化、使用OpenMP并行化、使用MPI/OpenMP混合并行化，并且分别给出以上三个要求的性能分析。
+\end{enumerate}
+该题目以小组的形式完成，需要给出小组中组员的分工。
+
+{\heiti 解答：}
+选择（b）题。
+
+NPB性能评测包含5个内核程序和3个伪应用程序，本例选择内核程序中的整数排序（Integer Sort）
+进行并行化。为了简化问题，串行程序和OMP版本中默认不使用Bucket Sort算法，MPI版本使用Bucket Sort算法。
+且将打印信息的函数\lstinline{c_print_results()}
+与计时相关函数合并入同一文件，方便编译测试。
+
+原始提供的串行版本代码为 \lstinline{is_ser.c},
+MPI版本代码为 \lstinline{is_mpi.c},
+OpenMP版本代码为 \lstinline{is_omp.c},
+Hybrid版本代码为 \lstinline{is_hyb.c},
+
+IS 程序中包含如下函数(不包括计时相关函数)：
+\begin{enumerate}
+    \item randlc() 随机数生成器
+    \item creat\_seq() 生成待排序列表
+    \item full\_verify() 验证排序结果
+    \item rank() 排序函数
+    \item main() 主程序
+\end{enumerate}
+
+MPI版本Amdahl加速比见表格\ref{tab:mpi_a}，曲线如图\ref{fig:mpi_a}
+\begin{table}[]
+    \centering
+    \caption{MPI speedup table} 
+    \label{tab:mpi_a} 
+    \begin{tabular}{@{}lll@{}}
+        \toprule
+        Proc\_num & Time(s) & Speedup \\ \midrule
+        4         & 5.77    & 1.32    \\
+        8         & 3.16    & 2.42    \\
+        16        & 1.49    & 5.13    \\
+        32        & 0.91    & 8.40    \\
+        64        & 0.59    & 12.95   \\ \bottomrule
+    \end{tabular}
+\end{table}
+\begin{figure}
+    \centering 
+    \includegraphics[width=0.8\textwidth]{mpi_amdahl.eps} 
+    \caption{MPI speedup-processor\_num} 
+    \label{fig:mpi_a} 
+\end{figure}
+
+
+MPI版本Scale加速比见表格\ref{tab:mpi_s}，曲线如图\ref{fig:mpi_s}
+\begin{table}[]
+    \centering
+    \caption{MPI scale speedup table} 
+    \label{tab:mpi_s} 
+    \begin{tabular}{@{}llll@{}}
+        \toprule
+        Proc\_num & Serial time(s) & Parallel time(s) & Scale speedup \\ \midrule
+        2         & 0.17           & 0.23             & 0.74          \\
+        4         & 0.37           & 0.25             & 1.48          \\
+        8         & 0.74           & 0.32             & 2.31          \\
+        16        & 1.48           & 0.38             & 3.89          \\
+        32        & 3.08           & 0.46             & 6.70          \\
+        64        & 7.57           & 0.57             & 13.28         \\ \bottomrule
+    \end{tabular}
+\end{table}
+\begin{figure}
+    \centering 
+    \includegraphics[width=0.8\textwidth]{mpi_s.eps} 
+    \caption{MPI speedup-processor\_num} 
+    \label{fig:mpi_s} 
+\end{figure}
+
+
+OMP版本Amdahl加速比见表格\ref{tab:omp_a}，曲线如图\ref{fig:omp_a}
+\begin{table}[]
+    \centering
+    \caption{OMP speedup table} 
+    \label{tab:omp_a} 
+    \begin{tabular}{@{}lll@{}}
+        \toprule
+        Proc\_num & Time(s) & Speedup \\ \midrule
+        4         & 5.52    & 1.38    \\
+        8         & 3.72    & 2.05    \\
+        16        & 3.69    & 2.07    \\
+        32        & 4.33    & 1.76    \\
+        64        & 5.30    & 1.44   \\ \bottomrule
+    \end{tabular}
+\end{table}
+\begin{figure}
+    \centering 
+    \includegraphics[width=0.8\textwidth]{omp_amdahl.eps} 
+    \caption{OMP speedup-processor\_num} 
+    \label{fig:omp_a} 
+\end{figure}
+
+
+OMP版本Scale加速比见表格\ref{tab:omp_s}，曲线如图\ref{fig:omp_s}
+\begin{table}[]
+    \centering
+    \caption{OMP scale speedup table} 
+    \label{tab:omp_s} 
+    \begin{tabular}{@{}llll@{}}
+        \toprule
+        Proc\_num & Serial time(s) & Parallel time(s) & Scale speedup \\ \midrule
+        2         & 0.17           & 0.10             & 1.70          \\
+        4         & 0.37           & 0.14             & 2.64          \\
+        8         & 0.74           & 0.21             & 3.52          \\
+        16        & 1.48           & 0.61             & 2.42          \\
+        32        & 3.08           & 2.08             & 1.48          \\
+        64        & 7.57           & 6.04             & 1.25         \\ \bottomrule
+    \end{tabular}
+\end{table}
+\begin{figure}
+    \centering 
+    \includegraphics[width=0.8\textwidth]{omp_s.eps} 
+    \caption{MPI speedup-processor\_num} 
+    \label{fig:omp_s} 
+\end{figure}
+
+
+Hybrid版本Amdahl加速比见表格\ref{tab:hyb_a}，曲线如图\ref{fig:hyb_a}
+\begin{table}[]
+    \centering
+    \caption{Hybrid speedup table} 
+    \label{tab:hyb_a} 
+    \begin{tabular}{@{}lll@{}}
+        \toprule
+        Proc\_num & Time(s) & Speedup \\ \midrule
+        4         & 5.69    & 1.34    \\
+        8         & 2.95    & 2.59    \\
+        16        & 1.72    & 4.44    \\
+        32        & 0.92    & 8.30    \\
+        64        & 0.61    & 12.52   \\ \bottomrule
+    \end{tabular}
+\end{table}
+\begin{figure}
+    \centering 
+    \includegraphics[width=0.8\textwidth]{hyb_amdahl.eps} 
+    \caption{MPI speedup-processor\_num} 
+    \label{fig:hyb_a} 
+\end{figure}
+
+
+Hybrid版本Scale加速比见表格\ref{tab:hyb_s}，曲线如图\ref{fig:hyb_s}
+\begin{table}[]
+    \centering
+    \caption{Hybrid scale speedup table} 
+    \label{tab:hyb_s} 
+    \begin{tabular}{@{}llll@{}}
+        \toprule
+        Proc\_num & Serial time(s) & Parallel time(s) & Scale speedup \\ \midrule
+        2         & 0.17           & 0.23             & 0.74          \\
+        4         & 0.37           & 0.25             & 1.48          \\
+        8         & 0.74           & 0.44             & 1.68          \\
+        16        & 1.48           & 0.49             & 3.02          \\
+        32        & 3.08           & 0.44             & 7.00          \\
+        64        & 7.57           & 0.65             & 11.64         \\ \bottomrule
+    \end{tabular}
+\end{table}
+\begin{figure}
+    \centering 
+    \includegraphics[width=0.8\textwidth]{hyb_s.eps} 
+    \caption{MPI speedup-processor\_num} 
+    \label{fig:hyb_s} 
+\end{figure}
+
+
+通过分析不同并行版本的程序加速比，可以发现在问题规模较小时，OpenMP
+优于MPI，因为MPI有相当一部分节点间通信开销。
+随着问题规模的扩大，MPI在多处理器体系中表现良好，扩展性优越。
+但是OpenMP只能在单节点执行，内存有限，随着问题规模扩大，内存出现瓶颈，
+扩展性不如MPI。
+
+Hybrid版本结合MPI与OpenMP二者的优势，既能在多节点间方便的扩展，也可以
+在单节点利用OpenMP多线程并行，充分发挥节点计算性能，避免节点间通信开销。
+
+
+3. 针对课程学习，给出心得体会，从自己的角度给出课程的要求和改进的建议。
+该题目可以1人做，也可以2人做。
+
+{\heiti 解答：}
+高级并行程序设计课程结束，作为一名之前对此领域毫无了解的学生，我知道了
+MPI和OpenMP两种编程框架，对于并行计算有了一定的了解。通过作业的训练，
+也能够完成将简单的串行程序并行化的的工作。为日后研究过程中可能的并行
+需求打下基础。一学期的学习之后，有以下建议，若有不当指出，还望包涵。
+
+并行编程框架的讲解要配合实际编程操作，才能落到实际。
+目前小作业的量较少，答疑放在课程结束之际。希望可以增加小作业的
+量，将答疑的时间分散开，放在相应的课程内容结束之后。一来加深
+对课程内容的理解，避免课程结束之际再回头复习写作业。
+
+
+\end{document}
